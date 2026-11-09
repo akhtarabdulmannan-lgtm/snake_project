@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="game">
+    <header class="game__header">
+        <h1>Snake</h1>
+        <p class="game__subtitle">Plain HTML + CSS + JavaScript. No build step.</p>
+    </header>
+
+    <section class="hud" aria-label="Game statistics">
+        <div class="hud__item">
+            <span class="hud__label">Score</span>
+            <span class="hud__value" id="score">0</span>
+        </div>
+        <div class="hud__item">
+            <span class="hud__label">Best</span>
+            <span class="hud__value" id="highScore">0</span>
+        </div>
+        <div class="hud__item">
+            <span class="hud__label">Speed</span>
+            <span class="hud__value" id="level">1</span>
+        </div>
+    </section>
+
+    <div class="board">
+        <canvas id="gameCanvas" width="400" height="400" aria-label="Snake game board"></canvas>
+
+        <div class="overlay" id="overlay">
+            <h2 class="overlay__title" id="overlayTitle">Ready?</h2>
+            <p class="overlay__text" id="overlayText">
+                Press Enter, or click the button, to start.
+            </p>
+            <button class="btn btn--primary" id="startBtn" type="button">Start game</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="pauseBtn" type="button" disabled>Pause</button>
+        <button class="btn" id="restartBtn" type="button">Restart</button>
+    </div>
+
+    <p class="info" id="info" role="status" aria-live="polite">
+        Arrow keys or W A S D to steer. Space pauses. Enter restarts.
+    </p>
+</main>
+
+<script>
+    // ===== GAME SETUP =====
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+
+    // ===== DOM ELEMENTS =====
+    const scoreEl = document.getElementById("score");
+    const highScoreEl = document.getElementById("highScore");
+    const levelEl = document.getElementById("level");
+    const infoEl = document.getElementById("info");
+    const overlayEl = document.getElementById("overlay");
+    const overlayTitleEl = document.getElementById("overlayTitle");
+    const overlayTextEl = document.getElementById("overlayText");
+    const startBtn = document.getElementById("startBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const restartBtn = document.getElementById("restartBtn");
+
+    // ===== TIMING AND DIFFICULTY =====
+    const BASE_INTERVAL = 150;   // ms per tick at speed level 1
+    const MIN_INTERVAL = 70;     // fastest allowed tick
+    const INTERVAL_STEP = 10;    // ms shaved off per speed level
+    const SCORE_PER_LEVEL = 5;   // food needed to gain one speed level
+    const HIGH_SCORE_KEY = "snakeHighScore";
+
+    // ===== INITIAL STATE =====
+    const START_SNAKE = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 }
+    ];
+    const START_FOOD = { x: 15, y: 15 };
+
+    let snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+    let direction = { x: 1, y: 0 };
+    let nextDirections = [];     // small buffer so quick key presses are not lost
+    let food = { x: START_FOOD.x, y: START_FOOD.y };
+    let score = 0;
+    let highScore = 0;
+    let status = "ready";        // ready | running | paused | over
+    let timerId = null;          // at most one pending timer, ever
+
+    // ===== DRAWING =====
+    const drawGame = () => {
+        // board background
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // grid lines
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.14)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < tileCount; i += 1) {
+            const line = i * gridSize + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(line, 0);
+            ctx.lineTo(line, canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, line);
+            ctx.lineTo(canvas.width, line);
+            ctx.stroke();
+        }
+
+        // food
+        ctx.fillStyle = "#f97316";
+        ctx.beginPath();
+        ctx.arc(
+            food.x * gridSize + gridSize / 2,
+            food.y * gridSize + gridSize / 2,
+            gridSize / 2 - 2,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+
+        // snake: head is brighter than the body
+        snake.forEach((segment, index) => {
+            ctx.fillStyle = index === 0 ? "#4ade80" : "#16a34a";
+            ctx.fillRect(
+                segment.x * gridSize + 1,
+                segment.y * gridSize + 1,
+                gridSize - 2,
+                gridSize - 2
+            );
+        });
+    };
+
+    // ===== SCORE STORAGE =====
+    const loadHighScore = () => {
+        try {
+            const stored = window.localStorage.getItem(HIGH_SCORE_KEY);
+            const parsed = Number.parseInt(stored, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        } catch (error) {
+            return 0; // storage blocked (some file:// setups)
+        }
+    };
+
+    const saveHighScore = () => {
+        try {
+            window.localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+        } catch (error) {
+            // ignore: the game still runs, the best score just is not remembered
+        }
+    };
+
+    // ===== HUD AND OVERLAY =====
+    const getLevel = () => 1 + Math.floor(score / SCORE_PER_LEVEL);
+
+    const updateHud = () => {
+        scoreEl.textContent = String(score);
+        highScoreEl.textContent = String(highScore);
+        levelEl.textContent = String(getLevel());
+    };
+
+    const setInfo = (message) => {
+        infoEl.textContent = message;
+    };
+
+    const showOverlay = (title, text, buttonLabel) => {
+        overlayTitleEl.textContent = title;
+        overlayTextEl.textContent = text;
+        startBtn.textContent = buttonLabel;
+        overlayEl.classList.add("overlay--visible");
+    };
+
+    const hideOverlay = () => {
+        overlayEl.classList.remove("overlay--visible");
+    };
+
+    // ===== TIMER (single source of truth) =====
+    const stopTimer = () => {
+        if (timerId !== null) {
+            clearTimeout(timerId);
+            timerId = null;
+        }
+    };
+
+    const getInterval = () => {
+        const interval = BASE_INTERVAL - (getLevel() - 1) * INTERVAL_STEP;
+        return Math.max(MIN_INTERVAL, interval);
+    };
+
+    const scheduleTick = () => {
+        stopTimer();                 // guarantees no duplicate timers
+        timerId = setTimeout(gameLoop, getInterval());
+    };
+
+    // ===== GAME LOGIC =====
+    const spawnFood = () => {
+        const freeCells = [];
+        for (let x = 0; x < tileCount; x += 1) {
+            for (let y = 0; y < tileCount; y += 1) {
+                const occupied = snake.some(
+                    (segment) => segment.x === x && segment.y === y
+                );
+                if (!occupied) {
+                    freeCells.push({ x: x, y: y });
+                }
+            }
+        }
+
+        if (freeCells.length === 0) {
+            endGame("You filled the whole board. Perfect game!", "You win!");
+            return false;
+        }
+
+        const pick = Math.floor(Math.random() * freeCells.length);
+        food = freeCells[pick];
+        return true;
+    };
+
+    const isOpposite = (a, b) => a.x === -b.x && a.y === -b.y;
+
+    const queueDirection = (candidate) => {
+        const reference = nextDirections.length > 0
+            ? nextDirections[nextDirections.length - 1]
+            : direction;
+
+        // ignore reversals and key repeats, and keep the buffer short
+        if (isOpposite(candidate, reference)) return false;
+        if (candidate.x === reference.x && candidate.y === reference.y) return false;
+        if (nextDirections.length >= 2) return false;
+
+        nextDirections.push(candidate);
+        return true;
+    };
+
+    const applyQueuedDirection = () => {
+        if (nextDirections.length > 0) {
+            direction = nextDirections.shift();
+        }
+    };
+
+    const endGame = (message, title) => {
+        status = "over";
+        stopTimer();
+
+        if (score > highScore) {
+            highScore = score;
+            saveHighScore();
+        }
+
+        updateHud();
+        drawGame();
+        showOverlay(
+            title || "Game over",
+            message + " Final score: " + score + ". Best: " + highScore + ".",
+            "Play again"
+        );
+        pauseBtn.disabled = true;
+        pauseBtn.textContent = "Pause";
+        setInfo("Game over. Press Enter or click Play again.");
+    };
+
+    const step = () => {
+        if (status !== "running") return;
+
+        applyQueuedDirection();
+
+        const head = {
+            x: snake[0].x + direction.x,
+            y: snake[0].y + direction.y
+        };
+
+        // wall collision
+        if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+            endGame("You hit the wall.");
+            return;
+        }
+
+        // self collision: the tail tip leaves its cell this tick unless we grow
+        const willGrow = head.x === food.x && head.y === food.y;
+        const body = willGrow ? snake : snake.slice(0, -1);
+        const hitsSelf = body.some(
+            (segment) => segment.x === head.x && segment.y === head.y
+        );
+
+        if (hitsSelf) {
+            endGame("You ran into your own body.");
+            return;
+        }
+
+        snake.unshift(head);
+
+        if (willGrow) {
+            score += 1;
+            if (score > highScore) {
+                highScore = score;
+                saveHighScore();
+            }
+            updateHud();
+            if (!spawnFood()) return; // board full: endGame already ran
+        } else {
+            snake.pop();
+        }
+
+        drawGame();
+    };
+
+    const gameLoop = () => {
+        if (status !== "running") return;
+
+        step();
+
+        if (status === "running") {
+            timerId = setTimeout(gameLoop, getInterval());
+        }
+    };
+
+    // ===== GAME STATE TRANSITIONS =====
+    const resetGame = () => {
+        stopTimer();
+
+        snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+        direction = { x: 1, y: 0 };
+        nextDirections = [];
+        score = 0;
+        status = "ready";
+
+        food = { x: START_FOOD.x, y: START_FOOD.y };
+        if (snake.some((segment) => segment.x === food.x && segment.y === food.y)) {
+            spawnFood();
+        }
+
+        pauseBtn.disabled = true;
+        pauseBtn.textContent = "Pause";
+        updateHud();
+        drawGame();
+        showOverlay(
+            "Ready?",
+            "Arrow keys or W A S D to steer. Press Enter to start.",
+            "Start game"
+        );
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
+    };
+
+    const beginPlay = () => {
+        status = "running";
+        hideOverlay();
+        pauseBtn.disabled = false;
+        pauseBtn.textContent = "Pause";
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
+        updateHud();
+        scheduleTick();
+    };
+
+    const startGame = () => {
+        if (status === "running") return;
+        if (status === "paused") {
+            resumeGame();
+            return;
+        }
+        resetGame();
+        beginPlay();
+    };
+
+    const restartGame = () => {
+        resetGame();
+        beginPlay();
+    };
+
+    const pauseGame = () => {
+        if (status !== "running") return;
+        status = "paused";
+        stopTimer();
+        pauseBtn.textContent = "Resume";
+        setInfo("Paused. Press Space or click Resume to continue.");
+        showOverlay("Paused", "The snake is waiting. Press Space to continue.", "Resume");
+    };
+
+    const resumeGame = () => {
+        if (status !== "paused") return;
+        status = "running";
+        hideOverlay();
+        pauseBtn.textContent = "Pause";
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
+        scheduleTick();
+    };
+
+    const togglePause = () => {
+        if (status === "running") {
+            pauseGame();
+        } else if (status === "paused") {
+            resumeGame();
+        }
+    };
+
+    const handleOverlayAction = () => {
+        if (status === "paused") {
+            resumeGame();
+        } else {
+            startGame();
+        }
+    };
+
+    // ===== KEYBOARD CONTROLS =====
+    const KEY_DIRECTIONS = {
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+        w: { x: 0, y: -1 },
+        s: { x: 0, y: 1 },
+        a: { x: -1, y: 0 },
+        d: { x: 1, y: 0 }
+    };
+
+    const handleKeyDown = (event) => {
+        const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+
+        // a focused <button> already reacts to Space/Enter itself; handling it here
+        // as well would toggle twice (pause + resume in the same key press)
+        const target = event.target;
+        const buttonHasFocus = Boolean(target && target.tagName === "BUTTON");
+
+        // arrow keys / WASD
+        if (KEY_DIRECTIONS[key]) {
+            event.preventDefault();
+
+            if (status === "ready") {
+                startGame();
+            }
+            if (status === "running") {
+                queueDirection(KEY_DIRECTIONS[key]);
+            }
+            return;
+        }
+
+        // space = pause / resume
+        if (key === " " || key === "Spacebar") {
+            if (buttonHasFocus) return;
+            event.preventDefault();
+            if (status === "running" || status === "paused") {
+                togglePause();
+            } else {
+                startGame();
+            }
+            return;
+        }
+
+        // enter = start / restart / resume
+        if (key === "Enter") {
+            if (buttonHasFocus) return;
+            event.preventDefault();
+            handleOverlayAction();
+        }
+    };
+
+    // ===== EVENT WIRING =====
+    document.addEventListener("keydown", handleKeyDown);
+    startBtn.addEventListener("click", handleOverlayAction);
+    pauseBtn.addEventListener("click", togglePause);
+    restartBtn.addEventListener("click", restartGame);
+
+    // ===== BOOT =====
+    highScore = loadHighScore();
+    resetGame();
+    updateHud();
+</script>
+
+</body>
+</html>
