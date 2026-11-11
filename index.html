@@ -59,6 +59,7 @@
     const tileCount = canvas.width / gridSize;
 
     // ===== DOM ELEMENTS =====
+    const scoreEl = document.getElementById("score");
     const overlayEl = document.getElementById("overlay");
     const overlayTitleEl = document.getElementById("overlayTitle");
     const overlayTextEl = document.getElementById("overlayText");
@@ -80,6 +81,7 @@
     let direction = { x: 1, y: 0 };
     let nextDirections = [];     // small buffer so quick key presses are not lost
     let food = { x: START_FOOD.x, y: START_FOOD.y };
+    let score = 0;
     let status = "ready";        // ready | running | paused | over
     let timerId = null;          // at most one pending timer, ever
 
@@ -129,6 +131,10 @@
     };
 
     // ===== HUD AND OVERLAY =====
+    const updateHud = () => {
+        scoreEl.textContent = String(score);
+    };
+
     const showOverlay = (title, text, buttonLabel) => {
         overlayTitleEl.textContent = title;
         overlayTextEl.textContent = text;
@@ -154,6 +160,23 @@
     };
 
     // ===== GAME LOGIC =====
+    const spawnFood = () => {
+        const freeCells = [];
+        for (let x = 0; x < tileCount; x += 1) {
+            for (let y = 0; y < tileCount; y += 1) {
+                const occupied = snake.some(
+                    (segment) => segment.x === x && segment.y === y
+                );
+                if (!occupied) {
+                    freeCells.push({ x: x, y: y });
+                }
+            }
+        }
+
+        const pick = Math.floor(Math.random() * freeCells.length);
+        food = freeCells[pick];
+    };
+
     const isOpposite = (a, b) => a.x === -b.x && a.y === -b.y;
 
     const queueDirection = (candidate) => {
@@ -186,8 +209,17 @@
             y: snake[0].y + direction.y
         };
 
+        const willGrow = head.x === food.x && head.y === food.y;
+
         snake.unshift(head);
-        snake.pop();
+
+        if (willGrow) {
+            score += 1;
+            updateHud();
+            spawnFood();
+        } else {
+            snake.pop();
+        }
 
         drawGame();
     };
@@ -209,8 +241,15 @@
         snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
         direction = { x: 1, y: 0 };
         nextDirections = [];
+        score = 0;
         status = "ready";
 
+        food = { x: START_FOOD.x, y: START_FOOD.y };
+        if (snake.some((segment) => segment.x === food.x && segment.y === food.y)) {
+            spawnFood();
+        }
+
+        updateHud();
         drawGame();
         showOverlay(
             "Ready?",
@@ -222,6 +261,7 @@
     const beginPlay = () => {
         status = "running";
         hideOverlay();
+        updateHud();
         scheduleTick();
     };
 
@@ -278,6 +318,7 @@
 
     // ===== BOOT =====
     resetGame();
+    updateHud();
 </script>
 
 </body>
