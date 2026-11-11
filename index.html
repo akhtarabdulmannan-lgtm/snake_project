@@ -60,6 +60,7 @@
 
     // ===== DOM ELEMENTS =====
     const scoreEl = document.getElementById("score");
+    const infoEl = document.getElementById("info");
     const overlayEl = document.getElementById("overlay");
     const overlayTitleEl = document.getElementById("overlayTitle");
     const overlayTextEl = document.getElementById("overlayText");
@@ -135,6 +136,10 @@
         scoreEl.textContent = String(score);
     };
 
+    const setInfo = (message) => {
+        infoEl.textContent = message;
+    };
+
     const showOverlay = (title, text, buttonLabel) => {
         overlayTitleEl.textContent = title;
         overlayTextEl.textContent = text;
@@ -173,8 +178,14 @@
             }
         }
 
+        if (freeCells.length === 0) {
+            endGame("You filled the whole board. Perfect game!", "You win!");
+            return false;
+        }
+
         const pick = Math.floor(Math.random() * freeCells.length);
         food = freeCells[pick];
+        return true;
     };
 
     const isOpposite = (a, b) => a.x === -b.x && a.y === -b.y;
@@ -199,6 +210,20 @@
         }
     };
 
+    const endGame = (message, title) => {
+        status = "over";
+        stopTimer();
+
+        updateHud();
+        drawGame();
+        showOverlay(
+            title || "Game over",
+            message + " Final score: " + score + ".",
+            "Play again"
+        );
+        setInfo("Game over. Press Enter or click Play again.");
+    };
+
     const step = () => {
         if (status !== "running") return;
 
@@ -209,14 +234,30 @@
             y: snake[0].y + direction.y
         };
 
+        // wall collision
+        if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+            endGame("You hit the wall.");
+            return;
+        }
+
+        // self collision: the tail tip leaves its cell this tick unless we grow
         const willGrow = head.x === food.x && head.y === food.y;
+        const body = willGrow ? snake : snake.slice(0, -1);
+        const hitsSelf = body.some(
+            (segment) => segment.x === head.x && segment.y === head.y
+        );
+
+        if (hitsSelf) {
+            endGame("You ran into your own body.");
+            return;
+        }
 
         snake.unshift(head);
 
         if (willGrow) {
             score += 1;
             updateHud();
-            spawnFood();
+            if (!spawnFood()) return; // board full: endGame already ran
         } else {
             snake.pop();
         }
@@ -256,11 +297,13 @@
             "Arrow keys or W A S D to steer. Press Enter to start.",
             "Start game"
         );
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
     };
 
     const beginPlay = () => {
         status = "running";
         hideOverlay();
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
         updateHud();
         scheduleTick();
     };
