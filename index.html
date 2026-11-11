@@ -60,6 +60,7 @@
 
     // ===== DOM ELEMENTS =====
     const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
     const infoEl = document.getElementById("info");
     const overlayEl = document.getElementById("overlay");
     const overlayTitleEl = document.getElementById("overlayTitle");
@@ -70,6 +71,9 @@
 
     // ===== TIMING AND DIFFICULTY =====
     const BASE_INTERVAL = 150;   // ms per tick at speed level 1
+    const MIN_INTERVAL = 70;     // fastest allowed tick
+    const INTERVAL_STEP = 10;    // ms shaved off per speed level
+    const SCORE_PER_LEVEL = 5;   // food needed to gain one speed level
 
     // ===== INITIAL STATE =====
     const START_SNAKE = [
@@ -133,8 +137,11 @@
     };
 
     // ===== HUD AND OVERLAY =====
+    const getLevel = () => 1 + Math.floor(score / SCORE_PER_LEVEL);
+
     const updateHud = () => {
         scoreEl.textContent = String(score);
+        levelEl.textContent = String(getLevel());
     };
 
     const setInfo = (message) => {
@@ -160,9 +167,14 @@
         }
     };
 
+    const getInterval = () => {
+        const interval = BASE_INTERVAL - (getLevel() - 1) * INTERVAL_STEP;
+        return Math.max(MIN_INTERVAL, interval);
+    };
+
     const scheduleTick = () => {
         stopTimer();                 // guarantees no duplicate timers
-        timerId = setTimeout(gameLoop, BASE_INTERVAL);
+        timerId = setTimeout(gameLoop, getInterval());
     };
 
     // ===== GAME LOGIC =====
@@ -274,7 +286,7 @@
         step();
 
         if (status === "running") {
-            timerId = setTimeout(gameLoop, BASE_INTERVAL);
+            timerId = setTimeout(gameLoop, getInterval());
         }
     };
 
