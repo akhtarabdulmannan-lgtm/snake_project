@@ -60,6 +60,7 @@
 
     // ===== DOM ELEMENTS =====
     const scoreEl = document.getElementById("score");
+    const highScoreEl = document.getElementById("highScore");
     const levelEl = document.getElementById("level");
     const infoEl = document.getElementById("info");
     const overlayEl = document.getElementById("overlay");
@@ -74,6 +75,7 @@
     const MIN_INTERVAL = 70;     // fastest allowed tick
     const INTERVAL_STEP = 10;    // ms shaved off per speed level
     const SCORE_PER_LEVEL = 5;   // food needed to gain one speed level
+    const HIGH_SCORE_KEY = "snakeHighScore";
 
     // ===== INITIAL STATE =====
     const START_SNAKE = [
@@ -88,6 +90,7 @@
     let nextDirections = [];     // small buffer so quick key presses are not lost
     let food = { x: START_FOOD.x, y: START_FOOD.y };
     let score = 0;
+    let highScore = 0;
     let status = "ready";        // ready | running | paused | over
     let timerId = null;          // at most one pending timer, ever
 
@@ -136,11 +139,31 @@
         });
     };
 
+    // ===== SCORE STORAGE =====
+    const loadHighScore = () => {
+        try {
+            const stored = window.localStorage.getItem(HIGH_SCORE_KEY);
+            const parsed = Number.parseInt(stored, 10);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        } catch (error) {
+            return 0; // storage blocked (some file:// setups)
+        }
+    };
+
+    const saveHighScore = () => {
+        try {
+            window.localStorage.setItem(HIGH_SCORE_KEY, String(highScore));
+        } catch (error) {
+            // ignore: the game still runs, the best score just is not remembered
+        }
+    };
+
     // ===== HUD AND OVERLAY =====
     const getLevel = () => 1 + Math.floor(score / SCORE_PER_LEVEL);
 
     const updateHud = () => {
         scoreEl.textContent = String(score);
+        highScoreEl.textContent = String(highScore);
         levelEl.textContent = String(getLevel());
     };
 
@@ -227,11 +250,16 @@
         status = "over";
         stopTimer();
 
+        if (score > highScore) {
+            highScore = score;
+            saveHighScore();
+        }
+
         updateHud();
         drawGame();
         showOverlay(
             title || "Game over",
-            message + " Final score: " + score + ".",
+            message + " Final score: " + score + ". Best: " + highScore + ".",
             "Play again"
         );
         pauseBtn.disabled = true;
@@ -271,6 +299,10 @@
 
         if (willGrow) {
             score += 1;
+            if (score > highScore) {
+                highScore = score;
+                saveHighScore();
+            }
             updateHud();
             if (!spawnFood()) return; // board full: endGame already ran
         } else {
@@ -436,6 +468,7 @@
     restartBtn.addEventListener("click", restartGame);
 
     // ===== BOOT =====
+    highScore = loadHighScore();
     resetGame();
     updateHud();
 </script>
