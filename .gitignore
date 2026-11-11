@@ -1,0 +1,13 @@
+# Editor / OS noise
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Node.js is only used by the optional logic test
+node_modules/
+npm-debug.log*
+
+# Local scratch files
+*.log
+scratch/
