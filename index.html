@@ -65,6 +65,7 @@
     const overlayTitleEl = document.getElementById("overlayTitle");
     const overlayTextEl = document.getElementById("overlayText");
     const startBtn = document.getElementById("startBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
     const restartBtn = document.getElementById("restartBtn");
 
     // ===== TIMING AND DIFFICULTY =====
@@ -221,6 +222,8 @@
             message + " Final score: " + score + ".",
             "Play again"
         );
+        pauseBtn.disabled = true;
+        pauseBtn.textContent = "Pause";
         setInfo("Game over. Press Enter or click Play again.");
     };
 
@@ -290,6 +293,8 @@
             spawnFood();
         }
 
+        pauseBtn.disabled = true;
+        pauseBtn.textContent = "Pause";
         updateHud();
         drawGame();
         showOverlay(
@@ -303,6 +308,8 @@
     const beginPlay = () => {
         status = "running";
         hideOverlay();
+        pauseBtn.disabled = false;
+        pauseBtn.textContent = "Pause";
         setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
         updateHud();
         scheduleTick();
@@ -310,6 +317,10 @@
 
     const startGame = () => {
         if (status === "running") return;
+        if (status === "paused") {
+            resumeGame();
+            return;
+        }
         resetGame();
         beginPlay();
     };
@@ -317,6 +328,40 @@
     const restartGame = () => {
         resetGame();
         beginPlay();
+    };
+
+    const pauseGame = () => {
+        if (status !== "running") return;
+        status = "paused";
+        stopTimer();
+        pauseBtn.textContent = "Resume";
+        setInfo("Paused. Press Space or click Resume to continue.");
+        showOverlay("Paused", "The snake is waiting. Press Space to continue.", "Resume");
+    };
+
+    const resumeGame = () => {
+        if (status !== "paused") return;
+        status = "running";
+        hideOverlay();
+        pauseBtn.textContent = "Pause";
+        setInfo("Arrow keys or W A S D to steer. Space pauses. Enter restarts.");
+        scheduleTick();
+    };
+
+    const togglePause = () => {
+        if (status === "running") {
+            pauseGame();
+        } else if (status === "paused") {
+            resumeGame();
+        }
+    };
+
+    const handleOverlayAction = () => {
+        if (status === "paused") {
+            resumeGame();
+        } else {
+            startGame();
+        }
     };
 
     // ===== KEYBOARD CONTROLS =====
@@ -334,6 +379,11 @@
     const handleKeyDown = (event) => {
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
 
+        // a focused <button> already reacts to Space/Enter itself; handling it here
+        // as well would toggle twice (pause + resume in the same key press)
+        const target = event.target;
+        const buttonHasFocus = Boolean(target && target.tagName === "BUTTON");
+
         // arrow keys / WASD
         if (KEY_DIRECTIONS[key]) {
             event.preventDefault();
@@ -347,16 +397,30 @@
             return;
         }
 
+        // space = pause / resume
+        if (key === " " || key === "Spacebar") {
+            if (buttonHasFocus) return;
+            event.preventDefault();
+            if (status === "running" || status === "paused") {
+                togglePause();
+            } else {
+                startGame();
+            }
+            return;
+        }
+
         // enter = start / restart / resume
         if (key === "Enter") {
+            if (buttonHasFocus) return;
             event.preventDefault();
-            startGame();
+            handleOverlayAction();
         }
     };
 
     // ===== EVENT WIRING =====
     document.addEventListener("keydown", handleKeyDown);
-    startBtn.addEventListener("click", startGame);
+    startBtn.addEventListener("click", handleOverlayAction);
+    pauseBtn.addEventListener("click", togglePause);
     restartBtn.addEventListener("click", restartGame);
 
     // ===== BOOT =====
