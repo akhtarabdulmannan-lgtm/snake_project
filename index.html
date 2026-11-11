@@ -78,6 +78,7 @@
 
     let snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
     let direction = { x: 1, y: 0 };
+    let nextDirections = [];     // small buffer so quick key presses are not lost
     let food = { x: START_FOOD.x, y: START_FOOD.y };
     let status = "ready";        // ready | running | paused | over
     let timerId = null;          // at most one pending timer, ever
@@ -153,8 +154,32 @@
     };
 
     // ===== GAME LOGIC =====
+    const isOpposite = (a, b) => a.x === -b.x && a.y === -b.y;
+
+    const queueDirection = (candidate) => {
+        const reference = nextDirections.length > 0
+            ? nextDirections[nextDirections.length - 1]
+            : direction;
+
+        // ignore reversals and key repeats, and keep the buffer short
+        if (isOpposite(candidate, reference)) return false;
+        if (candidate.x === reference.x && candidate.y === reference.y) return false;
+        if (nextDirections.length >= 2) return false;
+
+        nextDirections.push(candidate);
+        return true;
+    };
+
+    const applyQueuedDirection = () => {
+        if (nextDirections.length > 0) {
+            direction = nextDirections.shift();
+        }
+    };
+
     const step = () => {
         if (status !== "running") return;
+
+        applyQueuedDirection();
 
         const head = {
             x: snake[0].x + direction.x,
@@ -182,6 +207,8 @@
         stopTimer();
 
         snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+        direction = { x: 1, y: 0 };
+        nextDirections = [];
         status = "ready";
 
         drawGame();
@@ -210,8 +237,32 @@
     };
 
     // ===== KEYBOARD CONTROLS =====
+    const KEY_DIRECTIONS = {
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+        w: { x: 0, y: -1 },
+        s: { x: 0, y: 1 },
+        a: { x: -1, y: 0 },
+        d: { x: 1, y: 0 }
+    };
+
     const handleKeyDown = (event) => {
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+
+        // arrow keys / WASD
+        if (KEY_DIRECTIONS[key]) {
+            event.preventDefault();
+
+            if (status === "ready") {
+                startGame();
+            }
+            if (status === "running") {
+                queueDirection(KEY_DIRECTIONS[key]);
+            }
+            return;
+        }
 
         // enter = start / restart / resume
         if (key === "Enter") {
