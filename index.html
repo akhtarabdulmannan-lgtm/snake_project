@@ -58,6 +58,16 @@
     const gridSize = 20;
     const tileCount = canvas.width / gridSize;
 
+    // ===== DOM ELEMENTS =====
+    const overlayEl = document.getElementById("overlay");
+    const overlayTitleEl = document.getElementById("overlayTitle");
+    const overlayTextEl = document.getElementById("overlayText");
+    const startBtn = document.getElementById("startBtn");
+    const restartBtn = document.getElementById("restartBtn");
+
+    // ===== TIMING AND DIFFICULTY =====
+    const BASE_INTERVAL = 150;   // ms per tick at speed level 1
+
     // ===== INITIAL STATE =====
     const START_SNAKE = [
         { x: 10, y: 10 },
@@ -67,7 +77,10 @@
     const START_FOOD = { x: 15, y: 15 };
 
     let snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+    let direction = { x: 1, y: 0 };
     let food = { x: START_FOOD.x, y: START_FOOD.y };
+    let status = "ready";        // ready | running | paused | over
+    let timerId = null;          // at most one pending timer, ever
 
     // ===== DRAWING =====
     const drawGame = () => {
@@ -114,8 +127,106 @@
         });
     };
 
+    // ===== HUD AND OVERLAY =====
+    const showOverlay = (title, text, buttonLabel) => {
+        overlayTitleEl.textContent = title;
+        overlayTextEl.textContent = text;
+        startBtn.textContent = buttonLabel;
+        overlayEl.classList.add("overlay--visible");
+    };
+
+    const hideOverlay = () => {
+        overlayEl.classList.remove("overlay--visible");
+    };
+
+    // ===== TIMER (single source of truth) =====
+    const stopTimer = () => {
+        if (timerId !== null) {
+            clearTimeout(timerId);
+            timerId = null;
+        }
+    };
+
+    const scheduleTick = () => {
+        stopTimer();                 // guarantees no duplicate timers
+        timerId = setTimeout(gameLoop, BASE_INTERVAL);
+    };
+
+    // ===== GAME LOGIC =====
+    const step = () => {
+        if (status !== "running") return;
+
+        const head = {
+            x: snake[0].x + direction.x,
+            y: snake[0].y + direction.y
+        };
+
+        snake.unshift(head);
+        snake.pop();
+
+        drawGame();
+    };
+
+    const gameLoop = () => {
+        if (status !== "running") return;
+
+        step();
+
+        if (status === "running") {
+            timerId = setTimeout(gameLoop, BASE_INTERVAL);
+        }
+    };
+
+    // ===== GAME STATE TRANSITIONS =====
+    const resetGame = () => {
+        stopTimer();
+
+        snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+        status = "ready";
+
+        drawGame();
+        showOverlay(
+            "Ready?",
+            "Arrow keys or W A S D to steer. Press Enter to start.",
+            "Start game"
+        );
+    };
+
+    const beginPlay = () => {
+        status = "running";
+        hideOverlay();
+        scheduleTick();
+    };
+
+    const startGame = () => {
+        if (status === "running") return;
+        resetGame();
+        beginPlay();
+    };
+
+    const restartGame = () => {
+        resetGame();
+        beginPlay();
+    };
+
+    // ===== KEYBOARD CONTROLS =====
+    const handleKeyDown = (event) => {
+        const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+
+        // enter = start / restart / resume
+        if (key === "Enter") {
+            event.preventDefault();
+            startGame();
+        }
+    };
+
+    // ===== EVENT WIRING =====
+    document.addEventListener("keydown", handleKeyDown);
+    startBtn.addEventListener("click", startGame);
+    restartBtn.addEventListener("click", restartGame);
+
     // ===== BOOT =====
-    drawGame();
+    resetGame();
 </script>
 
 </body>
