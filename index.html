@@ -51,5 +51,72 @@
     </p>
 </main>
 
+<script>
+    // ===== GAME SETUP =====
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+
+    // ===== INITIAL STATE =====
+    const START_SNAKE = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 }
+    ];
+    const START_FOOD = { x: 15, y: 15 };
+
+    let snake = START_SNAKE.map((segment) => ({ x: segment.x, y: segment.y }));
+    let food = { x: START_FOOD.x, y: START_FOOD.y };
+
+    // ===== DRAWING =====
+    const drawGame = () => {
+        // board background
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // grid lines
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.14)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < tileCount; i += 1) {
+            const line = i * gridSize + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(line, 0);
+            ctx.lineTo(line, canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, line);
+            ctx.lineTo(canvas.width, line);
+            ctx.stroke();
+        }
+
+        // food
+        ctx.fillStyle = "#f97316";
+        ctx.beginPath();
+        ctx.arc(
+            food.x * gridSize + gridSize / 2,
+            food.y * gridSize + gridSize / 2,
+            gridSize / 2 - 2,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+
+        // snake: head is brighter than the body
+        snake.forEach((segment, index) => {
+            ctx.fillStyle = index === 0 ? "#4ade80" : "#16a34a";
+            ctx.fillRect(
+                segment.x * gridSize + 1,
+                segment.y * gridSize + 1,
+                gridSize - 2,
+                gridSize - 2
+            );
+        });
+    };
+
+    // ===== BOOT =====
+    drawGame();
+</script>
+
 </body>
 </html>
